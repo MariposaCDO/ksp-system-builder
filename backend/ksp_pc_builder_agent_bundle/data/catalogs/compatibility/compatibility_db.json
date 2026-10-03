@@ -1,0 +1,89 @@
+{
+  "version": "1.0.0",
+  "sockets": {
+    "AM4": {
+      "ram_support": [
+        "DDR4"
+      ],
+      "form_factors": [
+        "ATX",
+        "Micro-ATX",
+        "Mini-ITX"
+      ]
+    },
+    "AM5": {
+      "ram_support": [
+        "DDR5"
+      ],
+      "form_factors": [
+        "ATX",
+        "Micro-ATX",
+        "Mini-ITX"
+      ]
+    },
+    "LGA1700": {
+      "ram_support": [
+        "DDR4",
+        "DDR5"
+      ],
+      "form_factors": [
+        "ATX",
+        "Micro-ATX",
+        "Mini-ITX"
+      ]
+    },
+    "LGA1851": {
+      "ram_support": [
+        "DDR5"
+      ],
+      "form_factors": [
+        "ATX",
+        "Micro-ATX",
+        "Mini-ITX"
+      ]
+    }
+  },
+  "form_factors": {
+    "ATX": {
+      "compatible_cases": [
+        "ATX",
+        "E-ATX"
+      ]
+    },
+    "Micro-ATX": {
+      "compatible_cases": [
+        "Micro-ATX",
+        "ATX",
+        "E-ATX"
+      ]
+    },
+    "Mini-ITX": {
+      "compatible_cases": [
+        "Mini-ITX",
+        "Micro-ATX",
+        "ATX",
+        "E-ATX"
+      ]
+    }
+  },
+  "gpu_exclusions": [
+    "holder",
+    "bracket",
+    "support",
+    "cable",
+    "riser",
+    "backplate",
+    "stand",
+    "anti-sag"
+  ],
+  "gpu_valid_indicators": [
+    "rtx",
+    "gtx",
+    "rx",
+    "radeon",
+    "geforce",
+    "arc",
+    "graphics card"
+  ],
+  "psu_headroom_multiplier": 1.25
+}

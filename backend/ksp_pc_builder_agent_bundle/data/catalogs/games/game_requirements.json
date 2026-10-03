@@ -1,0 +1,26 @@
+{
+  "last_updated": "2026-09-26T14:58:02.123343+00:00",
+  "games": {
+    "roblox": {
+      "game": "roblox",
+      "required_ram_gb": 8,
+      "required_vram_gb": 1,
+      "source_url": "https://www.systemrequirementslab.com/cyri/requirements/roblox/13149",
+      "last_updated": "2026-03-30T10:00:00Z"
+    },
+    "minecraft": {
+      "game": "minecraft",
+      "required_ram_gb": 16,
+      "required_vram_gb": 2,
+      "source_url": "https://www.systemrequirementslab.com/cyri/requirements/minecraft/11356",
+      "last_updated": "2026-03-30T10:00:00Z"
+    },
+    "sims 4": {
+      "game": "sims 4",
+      "required_ram_gb": 16,
+      "required_vram_gb": 4,
+      "source_url": "https://www.systemrequirementslab.com/cyri/requirements/sims-4",
+      "last_updated": "2026-09-26T14:58:02.123343+00:00"
+    }
+  }
+}
