@@ -78,7 +78,7 @@ class CatalogDB:
         specs_db_path: Optional[Path] = None,
     ):
         self._parts_path = parts_db_path or Config.PARTS_DB_PATH
-        self._specs_path = specs_db_path or Config.ITEMIZED_SPECS_PATH
+        self._specs_path = specs_db_path
         self._conn: sqlite3.Connection = sqlite3.connect(":memory:")
         self._conn.row_factory = sqlite3.Row
         self._bootstrap()
@@ -178,8 +178,7 @@ class CatalogDB:
         logger.info(f"[CatalogDB] Loaded {len(rows)} parts from {self._parts_path.name}.")
 
     def _load_specs(self) -> None:
-        if not self._specs_path.exists():
-            logger.warning(f"[CatalogDB] Specs DB not found at {self._specs_path}. Skipping.")
+        if not self._specs_path or not self._specs_path.exists():
             return
 
         with open(self._specs_path, "r", encoding="utf-8") as f:

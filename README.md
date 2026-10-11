@@ -31,19 +31,13 @@ ksp-system-builder/
 │           ├── catalogs/                    # Runtime JSON (agent loads these)
 │           │   ├── parts/parts_db.json
 │           │   ├── games/game_requirements.json
-│           │   ├── games/known_games_url.json
-│           │   └── compatibility/
-│           │       ├── itemized_parts_specs.json
-│           │       └── compatibility_db.json
+│           │   └── games/known_games_url.json
 │           ├── common/                      # Shared paths + JSON helpers
 │           └── pipelines/                   # ETL (download = replace, update = patch)
 │               ├── parts/download_parts_catalog.py
 │               ├── games/download_game_requirements.py
 │               ├── games/update_game_requirements.py
-│               ├── games/update_known_games_urls.py
-│               └── compatibility/
-│                   ├── download_itemized_specs.py
-│                   └── download_compatibility_db.py
+│               └── games/update_known_games_urls.py
 ├── docs/                                    # HTML architecture notes
 └── README.md
 ```
@@ -119,8 +113,7 @@ The CLI runs preflight (parts DB present and loadable), then prints a category /
    (`cpu`, `motherboard`, `ram`, `ssd`, `psu`, `case`, `gpu`) from
    `backend/ksp_pc_builder_agent_bundle/data/catalogs/parts/parts_db.json`.
 3. **Compatibility** — `PCCompatibilityRules` filters candidates against already-picked parts using
-   `backend/ksp_pc_builder_agent_bundle/data/catalogs/compatibility/itemized_parts_specs.json`
-   (socket, RAM type, form factor, etc.).
+   catalog tags and category metadata from `parts_db.json` (socket, RAM type, form factor, etc.).
 4. **Budget fit** — The engine picks lowest-price compatible parts within remaining budget and returns the build dict + totals.
 
 ## Supporting Data Pipelines
@@ -133,8 +126,6 @@ Run from `agent/ksp-system-builder` (cwd). Scripts add `backend/` to `sys.path` 
 | `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/download_game_requirements.py` | download | catalogs/games/game_requirements.json | Rebuild game RAM/VRAM from known URLs |
 | `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_game_requirements.py` | update | patches game requirements + known URLs | Add or refresh a single game |
 | `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_known_games_urls.py` | update | catalogs/games/known_games_url.json | Dedupe slugs and resolve SRL URLs |
-| `backend/ksp_pc_builder_agent_bundle/data/pipelines/compatibility/download_itemized_specs.py` | download | catalogs/compatibility/itemized_parts_specs.json | Specs for compatibility checks |
-| `backend/ksp_pc_builder_agent_bundle/data/pipelines/compatibility/download_compatibility_db.py` | download | catalogs/compatibility/compatibility_db.json | Extra compatibility metadata |
 
 Output paths are under `backend/ksp_pc_builder_agent_bundle/data/catalogs/`.
 

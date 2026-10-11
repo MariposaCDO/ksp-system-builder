@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KSP Game-Aware PC System Builder</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0056b3;
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #0056b3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #004085;
+        }
+        hr {
+            margin: 30px 0;
+            border: 0;
+            border-top: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>KSP System Builder Client</h1>
+    <p style="text-align: center; color: #666;">Connects directly to the backend API layer without client-side scripts.</p>
+
+    <!-- Natural Language Prompt Form -->
+    <div class="section">
+        <h2>Natural Language Mode</h2>
+        <form action="http://localhost:8000/api/v1/build/prompt" method="POST" target="_blank">
+            <label for="prompt">Enter your prompt (e.g., "Build me a PC for Cyberpunk 2077 with 6000 ILS"):</label>
+            <input type="text" id="prompt" name="prompt" value="Build me a PC for Cyberpunk 2077 with 6000 ILS" required>
+            <button type="submit">Submit Prompt (JSON Response)</button>
+        </form>
+    </div>
+
+    <hr>
+
+    <!-- Explicit Parameters Form -->
+    <div class="section">
+        <h2>Explicit Parameters Mode</h2>
+        <form action="http://localhost:8000/api/v1/build/explicit" method="POST" target="_blank">
+            <label for="games">Games (comma or space separated):</label>
+            <input type="text" id="games" name="games" value="cyberpunk-2077, minecraft" required>
+            
+            <label for="budget">Budget (ILS):</label>
+            <input type="number" id="budget" name="budget" value="5000" step="any" required>
+
+            <button type="submit">Generate Build (JSON Response)</button>
+        </form>
+    </div>
+
+</body>
+</html>

@@ -43,8 +43,6 @@ STALE_THRESHOLD_DAYS = 30
 ALL_DB_FILES: dict[str, Path] = {
     "parts_db":          Config.PARTS_DB_PATH,
     "game_requirements": Config.GAME_REQUIREMENTS_PATH,
-    "itemized_specs":    Config.ITEMIZED_SPECS_PATH,
-    "compatibility_db":  Config.COMPATIBILITY_DB_PATH,
     "known_games_urls":  Config.KNOWN_GAMES_URLS_PATH,
 }
 
@@ -55,10 +53,6 @@ UPDATE_PIPELINES: dict[str, str] = {
         "ksp_pc_builder_agent_bundle.data.pipelines.parts.download_parts_catalog",
     "game_requirements":
         "ksp_pc_builder_agent_bundle.data.pipelines.games.download_game_requirements",
-    "itemized_specs":
-        "ksp_pc_builder_agent_bundle.data.pipelines.compatibility.download_itemized_specs",
-    "compatibility_db":
-        "ksp_pc_builder_agent_bundle.data.pipelines.compatibility.download_compatibility_db",
     "known_games_urls":
         "ksp_pc_builder_agent_bundle.data.pipelines.games.update_known_games_urls",
 }
