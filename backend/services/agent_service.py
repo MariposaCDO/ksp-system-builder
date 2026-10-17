@@ -1,10 +1,14 @@
 import json
 import re
 import requests
+import os
+from typing import Optional
 from ksp_pc_builder_agent_bundle import KspPcBuilderAgentEngine
+from ollama.self_healer import OllamaSelfHealer
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "llama3.1:8b"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_URL = f"{OLLAMA_BASE_URL}/api/chat" if not OLLAMA_BASE_URL.endswith("/api/chat") else OLLAMA_BASE_URL
+MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 
 AGENT_SYSTEM_PROMPT = """
 role: system
@@ -50,18 +54,32 @@ If the output from `build_pc` is returned, explain the final recommendation clea
 """
 
 class PcAgentService:
-    def __init__(self):
+    def __init__(self, auto_heal: Optional[bool] = None):
         self.engine = KspPcBuilderAgentEngine()
+        self.healer = OllamaSelfHealer(base_url=OLLAMA_BASE_URL, primary_model=MODEL)
+        self.auto_heal = auto_heal if auto_heal is not None else os.getenv("AUTO_HEAL_MODELS", "true").lower() in ("true", "1")
+        self.active_model = MODEL
+
+    def ensure_llm_ready(self) -> bool:
+        """Verify model availability or auto-heal it."""
+        if self.auto_heal:
+            ok, model_or_err = self.healer.heal_model_dependencies(auto_pull=True)
+            if ok:
+                self.active_model = model_or_err
+                return True
+            return False
+        return self.healer.is_model_installed(self.active_model)
 
     def process_prompt(self, user_prompt: str) -> dict:
         games = []
         budget = 3500.0
 
         try:
+            self.ensure_llm_ready()
             response = requests.post(
                 OLLAMA_URL,
                 json={
-                    "model": MODEL,
+                    "model": self.active_model,
                     "messages": [
                         {"role": "system", "content": AGENT_SYSTEM_PROMPT},
                         {"role": "user",   "content": user_prompt},

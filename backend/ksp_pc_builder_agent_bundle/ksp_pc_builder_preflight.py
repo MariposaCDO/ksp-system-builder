@@ -128,9 +128,9 @@ def _check_staleness(
 # Public API
 # ---------------------------------------------------------------------------
 
-def run_preflight_checks(stale_mode: str = "ask") -> Tuple[bool, List[str]]:
+def run_preflight_checks(stale_mode: str = "ask", check_ollama: bool = False) -> Tuple[bool, List[str]]:
     """
-    Validate all catalog DB files before the engine starts.
+    Validate all catalog DB files before the engine starts. Optionally verify Ollama health.
 
     Parameters
     ----------
@@ -138,6 +138,8 @@ def run_preflight_checks(stale_mode: str = "ask") -> Tuple[bool, List[str]]:
         "ask"    — interactive prompt when a file is stale (default)
         "update" — auto-trigger update pipelines without prompting
         "ignore" — record stale files but take no action
+    check_ollama : bool
+        If True, verifies Ollama connectivity and model availability.
 
     Returns
     -------
@@ -194,6 +196,22 @@ def run_preflight_checks(stale_mode: str = "ask") -> Tuple[bool, List[str]]:
 
     if all_ok:
         print(f"[PREFLIGHT] All {len(ALL_DB_FILES)} catalog files validated successfully.")
+
+    if check_ollama:
+        try:
+            from ollama.self_healer import OllamaSelfHealer
+            healer = OllamaSelfHealer()
+            if healer.is_service_online():
+                installed = healer.is_model_installed(healer.primary_model)
+                if installed:
+                    print(f"[PREFLIGHT] Ollama model '{healer.primary_model}' is ready.")
+                else:
+                    print(f"[PREFLIGHT WARNING] Ollama model '{healer.primary_model}' is not installed (will auto-heal on demand).")
+            else:
+                print("[PREFLIGHT WARNING] Ollama service is offline. LLM prompt extraction will fallback to rule-based parser.")
+        except Exception as e:
+            print(f"[PREFLIGHT WARNING] Ollama diagnostic check skipped: {e}")
+
     return all_ok, stale_files
 
 

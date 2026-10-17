@@ -98,10 +98,20 @@ def main():
     parser.add_argument("--tier", choices=sorted(VALID_TIERS), default=None)
     parser.add_argument("--update-stale", action="store_true")
     parser.add_argument("--ignore-stale", action="store_true")
+    parser.add_argument("--check-ollama", action="store_true", help="Check Ollama status during preflight")
+    parser.add_argument("--prune-models", action="store_true", help="Remove unused models from Ollama to free up space")
     args = parser.parse_args()
 
+    if args.prune_models:
+        from ollama.self_healer import OllamaSelfHealer
+        healer = OllamaSelfHealer()
+        print(f"[OLLAMA] Pruning models not in primary whitelist ['{healer.primary_model}']...")
+        removed = healer.prune_unused_models(keep_models=[healer.primary_model])
+        print(f"[OLLAMA] Pruned {len(removed)} models: {removed}")
+        return
+
     stale_mode = "update" if args.update_stale else ("ignore" if args.ignore_stale else "ask")
-    ok, stale_files = run_preflight_checks(stale_mode=stale_mode)
+    ok, stale_files = run_preflight_checks(stale_mode=stale_mode, check_ollama=args.check_ollama)
     if not ok:
         sys.exit(1)
 

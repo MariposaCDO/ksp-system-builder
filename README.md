@@ -42,21 +42,65 @@ ksp-system-builder/
 └── README.md
 ```
 
-## Quickstart
+## Quickstart & Standalone Setup
 
-Commands below assume your cwd is `agent/ksp-system-builder`.
+`ksp-system-builder` is fully decoupled and standalone. Commands below assume your working directory is `agent/ksp-system-builder`.
 
-### 1. Install Dependencies
+### 1. Automated One-Command Installer
 
-From the repo root:
-
+**On Linux / macOS (Bash):**
 ```bash
-pip install requests cloudscraper beautifulsoup4
+chmod +x install.sh
+./install.sh
 ```
 
-(`requests` is already in the root `requirements.txt`. `cloudscraper` is required to refresh the KSP parts catalog.)
+**On Windows (PowerShell):**
+```powershell
+.\install.ps1
+```
 
-### 2. Ensure the Parts Database Exists
+The installer will:
+- Check Python `>= 3.10`
+- Bootstrap [uv](https://astral.sh/uv) automatically
+- Create `.venv` and install cryptographically hashed dependencies from `requirements.lock`
+- Run catalog preflight checks
+- Check and auto-heal Ollama model dependencies (`llama3.1:8b`)
+
+---
+
+### 2. Manual / UV Workflow
+
+```bash
+# Install uv if not already present
+pip install uv
+
+# Create isolated venv
+uv venv .venv
+source .venv/bin/activate    # On Windows: .\.venv\Scripts\Activate.ps1
+
+# Install with hash verification
+uv pip install --require-hashes -r requirements.lock
+
+# Optional: re-compile dependencies when changing pyproject.toml
+uv pip compile pyproject.toml --generate-hashes -o requirements.lock
+```
+
+---
+
+### 3. Ollama & Model Self-Healer
+
+The backend features an integrated self-healer (`backend/ollama/self_healer.py`) that:
+- Verifies local Ollama service health.
+- Automatically pulls the required model (`llama3.1:8b` or fallback `qwen2.5-coder:7b`) on demand if missing.
+- Provides a model pruning CLI to clean up unused weights and free VRAM/disk:
+  ```bash
+  python frontend/cli/main.py --prune-models
+  ```
+- Gracefully falls back to deterministic rule extraction if Ollama is offline.
+
+---
+
+### 4. Ensure the Parts Database Exists
 
 A catalog should already live at
 `backend/ksp_pc_builder_agent_bundle/data/catalogs/parts/parts_db.json`.
