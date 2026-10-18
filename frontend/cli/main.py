@@ -128,8 +128,22 @@ def main():
     else:
         result = agent_service.process_prompt("Build me a PC for Minecraft and Roblox with a budget of 3500 ILS")
 
+    # Guard: Fail if any requested game is unrecognized/missing from catalog
+    unrecognized = result.get("requirements", {}).get("unrecognized_games", [])
+    if unrecognized:
+        missing_str = ", ".join(unrecognized)
+        print("\n" + "=" * 80)
+        print(f"[ERROR] Game(s) missing from database: {missing_str}")
+        print(f"[HINT] Game '{unrecognized[0]}' was not found in the requirements catalog.")
+        print(f"       You can add it via the API by posting to /api/v1/games/upsert or /api/v1/games/add:")
+        print(f'       {{"game": "{unrecognized[0]}", "required_ram_gb": 16, "required_vram_gb": 6}}')
+        print(f"       Or update offline: python backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_game_requirements.py --game \"{unrecognized[0]}\" --url <SRL_URL>")
+        print("=" * 80)
+        sys.exit(1)
+
     _display_all_tiers(result, filter_tier=args.tier)
     _display_stale_warning(stale_files)
+
 
 if __name__ == "__main__":
     main()

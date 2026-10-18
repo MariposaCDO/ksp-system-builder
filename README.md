@@ -161,7 +161,7 @@ Interactive Swagger / OpenAPI documentation is available at `http://localhost:80
 | | `/api/v1/components/gpu` | `GET` | Retrieve all GPUs (supports optional `?max_price=` filter) |
 | | `/api/v1/components/{category}`| `GET` | Retrieve parts by category (`motherboard`, `ram`, `ssd`, `psu`, etc.) |
 
-> **Missing Game Guard:** If a build request references a game not found in the catalog, the API raises `404 Not Found` with a specific hint and JSON payload demonstrating how to add it via `/api/v1/games/upsert`.
+> **Missing Game Guard:** Both the REST API and CLI normalize requested game titles (e.g. `sim6` $\rightarrow$ `sim 6`, `cyberpunk-2077` $\rightarrow$ `cyberpunk 2077`). If a requested game is not found in the requirements catalog, execution halts with a clear error referencing the normalized title that was searched, accompanied by a remediation hint showing how to add it via `/api/v1/games/upsert` or offline ETL.
 
 ---
 

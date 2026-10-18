@@ -21,6 +21,26 @@ logger = logging.getLogger("KspAgentEngine")
 GAMES_DB_PATH: Path = Config.GAME_REQUIREMENTS_PATH
 
 
+import re
+
+def normalize_game_title(title: str) -> str:
+    """
+    Normalize game title:
+    - Lowercase and strip whitespace
+    - Replace dashes, underscores, colons with spaces (e.g. 'cyberpunk-2077' -> 'cyberpunk 2077')
+    - Separate letters and digits (e.g. 'sim6' -> 'sim 6', 'sims4' -> 'sims 4')
+    - Collapse multiple spaces
+    """
+    if not title:
+        return ""
+    cleaned = title.strip().lower()
+    cleaned = re.sub(r'[\-_:\.]+', ' ', cleaned)
+    cleaned = re.sub(r'([a-zA-Z]+)(\d+)', r'\1 \2', cleaned)
+    cleaned = re.sub(r'(\d+)([a-zA-Z]+)', r'\1 \2', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
+
+
 class GameRequirementsRules:
     """Evaluates PC build requirements against locally-cached game hardware specs."""
 
@@ -47,8 +67,8 @@ class GameRequirementsRules:
     def resolve_requirements(self, game_inputs: List[str]) -> Dict[str, Any]:
         """
         Look up each game in the local catalog and aggregate minimum hardware
-        requirements.  Unknown games are listed in ``unrecognized_games``;
-        no automatic remote fetching is performed.
+        requirements.  Unknown games are listed in ``unrecognized_games`` with their
+        normalized search representation; no automatic remote fetching is performed.
         """
         aggregated: Dict[str, Any] = {
             "required_ram_gb":    8,
@@ -58,8 +78,11 @@ class GameRequirementsRules:
         }
 
         for entry in game_inputs:
-            clean_key = entry.strip().lower()
-            matched   = self._find_in_catalog(clean_key)
+            normalized_key = normalize_game_title(entry)
+            if not normalized_key:
+                continue
+
+            matched = self._find_in_catalog(normalized_key)
 
             if matched:
                 logger.info(" -> Game Recognized: %s", matched["game"])
@@ -72,12 +95,14 @@ class GameRequirementsRules:
                 )
             else:
                 logger.warning(
-                    " -> WARNING: '%s' not in catalog. Run the games pipeline offline to add it.",
+                    " -> WARNING: '%s' (searched as '%s') not in catalog. Run the games pipeline offline or add it via API.",
                     entry,
+                    normalized_key,
                 )
-                aggregated["unrecognized_games"].append(entry)
+                aggregated["unrecognized_games"].append(normalized_key)
 
         return aggregated
+
 
     def reload(self) -> None:
         """Reload the catalog from disk."""
@@ -137,7 +162,8 @@ class GameRequirementsRules:
     # ------------------------------------------------------------------
 
     def _find_in_catalog(self, clean_key: str) -> Optional[Dict[str, Any]]:
+        target_norm = normalize_game_title(clean_key)
         for key, data in self._catalog.items():
-            if key == clean_key or key in clean_key or clean_key in key:
+            if normalize_game_title(key) == target_norm:
                 return data
         return None

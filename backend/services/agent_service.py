@@ -102,17 +102,30 @@ class PcAgentService:
             if budget_match:
                 budget = float(budget_match.group(1))
 
-            clean_p = re.sub(r"build.*(?:for|to play)|under.*|budget.*|\d+\s*ils", "", user_prompt, flags=re.I).strip()
-            game_matches = re.findall(r"([a-zA-Z0-9\s:-]{3,})", clean_p)
-            for g in game_matches:
-                g_str = g.strip()
-                if g_str and g_str.lower() not in ["i want", "pc", "a", "for", "with"]:
-                    games.append(g_str.lower())
+            text = user_prompt.strip()
+            # Strip budget clauses
+            text = re.sub(r"\b(?:with\s+a\s+budget\s+of|with\s+budget\s+of|budget\s+of|with\s+a\s+budget|budget)\s*(?:of\s*)?\d+(?:\.\d+)?\s*(?:ils|nis|₪)?\b", "", text, flags=re.I)
+            text = re.sub(r"\bwith\s+\d+(?:\.\d+)?\s*(?:ils|nis|₪)\b", "", text, flags=re.I)
+            text = re.sub(r"\bunder\s+\d+(?:\.\d+)?\s*(?:ils|nis|₪)?\b", "", text, flags=re.I)
+            text = re.sub(r"\b\d+(?:\.\d+)?\s*(?:ils|nis|₪)\b", "", text, flags=re.I)
+
+            # Strip introductory prefixes and trailing conjunctions
+            text = re.sub(r"^(?:please\s+)?(?:build|make|give|recommend)\s+(?:me\s+)?(?:a\s+)?(?:pc|computer|system|rig)\s+(?:for|to\s+play)\s+", "", text, flags=re.I)
+            text = re.sub(r"^(?:i\s+want\s+to\s+play|i\s+need\s+a\s+pc\s+for)\s+", "", text, flags=re.I)
+            text = re.sub(r"\bwith\s+a\s*$", "", text, flags=re.I).strip()
+
+            parts = re.split(r"\s+(?:and|&|\+)\s+|,", text, flags=re.I)
+            stop_words = {"i want", "pc", "a", "for", "with", "the", "play", "to", "under", "budget", "of"}
+            for p in parts:
+                g_str = p.strip()
+                if g_str and g_str.lower() not in stop_words:
+                    games.append(g_str)
             
             if not games:
                 games = ["sims 4"]
 
         return self.engine.process_build_request_tiered(games=games, max_budget=budget)
+
 
     def process_explicit(self, games: list, budget: float) -> dict:
         return self.engine.process_build_request_tiered(games=games, max_budget=budget)
