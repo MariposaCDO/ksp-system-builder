@@ -88,11 +88,12 @@ class KspPcBuilderAgentEngine:
         tiers: Dict[str, Any] = {}
         warnings: List[str] = []
 
-        # ── Tier 1: Minimal ──────────────────────────────────────────
-        minimal = self._build_one(reqs, max_budget, strategy="minimal")
+        # ── Tier 1: Minimal (Finds Global Minimum Total Cost Build) ──
+        minimal = self._build_minimal_optimal(reqs, max_budget)
         tiers["minimal"] = minimal
 
         minimal_is_complete = len(minimal["missing_categories"]) == 0
+
         minimal_is_viable = minimal["within_budget"] and minimal_is_complete
 
         if not minimal_is_viable:
@@ -154,11 +155,51 @@ class KspPcBuilderAgentEngine:
             "warnings": result.get("warnings", []),
         }
 
+    def _build_minimal_optimal(self, reqs: Dict[str, Any], budget: float) -> Dict[str, Any]:
+        """
+        Evaluate candidate CPUs across platforms (AMD & Intel) to discover
+        the overall global minimal-cost complete build rather than naively
+        picking the single cheapest CPU.
+        """
+        all_cpus = self.catalog.get_items_by_category("cpu")
+        if not all_cpus:
+            return self._build_one(reqs, budget, strategy="minimal")
+
+        # Sort CPUs by price ascending
+        sorted_cpus = sorted(all_cpus, key=lambda x: x.get("price", 0.0))
+
+        best_build: Optional[Dict[str, Any]] = None
+        min_total_price = float("inf")
+
+        for cpu_candidate in sorted_cpus:
+            # If the CPU alone is already more expensive than a found complete build, prune search
+            if cpu_candidate.get("price", 0.0) >= min_total_price:
+                break
+
+            initial_build = {"cpu": cpu_candidate}
+            candidate_res = self._build_one(
+                reqs, budget, strategy="minimal", initial_build=initial_build
+            )
+
+            # Check if this configuration produced a complete build
+            if len(candidate_res["missing_categories"]) == 0:
+                cost = candidate_res["total_price"]
+                if cost < min_total_price:
+                    min_total_price = cost
+                    best_build = candidate_res
+
+        # Fallback to default single-pass build if no complete build was formed
+        if best_build is None:
+            return self._build_one(reqs, budget, strategy="minimal")
+
+        return best_build
+
     def _build_one(
         self,
         reqs: Dict[str, Any],
         budget: float,
         strategy: str = "balanced",
+        initial_build: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown strategy '{strategy}'. Must be one of {VALID_STRATEGIES}.")
@@ -169,14 +210,18 @@ class KspPcBuilderAgentEngine:
         elif strategy == "best_cpu":
             selection_order = ["cpu", "motherboard", "ram", "gpu", "ssd", "psu", "case"]
 
-        selected_build: Dict[str, Any] = {}
-        total_cost = 0.0
+        selected_build: Dict[str, Any] = dict(initial_build) if initial_build else {}
+        total_cost = sum(part.get("price", 0.0) for part in selected_build.values())
         missing: List[str] = []
 
         weights = CATEGORY_WEIGHTS.get(strategy, CATEGORY_WEIGHTS["balanced"])
 
         for category in selection_order:
+            if category in selected_build:
+                continue
+
             items = self.catalog.get_items_by_category(category)
+
             if not items:
                 logger.warning(f"No items in catalog for category '{category}'")
                 missing.append(category)
