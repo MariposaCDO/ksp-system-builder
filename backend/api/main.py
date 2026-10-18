@@ -44,3 +44,51 @@ def build_explicit(req: ExplicitBuildRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/games")
+def get_all_games():
+    """Retrieve all games currently available in the requirements catalog."""
+    try:
+        return agent_service.get_all_games()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/components/categories")
+def get_component_categories():
+    """Retrieve all available component categories in the parts database."""
+    try:
+        return agent_service.engine.catalog._db.get_categories()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/components/cpu")
+def get_all_cpu(max_price: Optional[float] = None):
+    """Retrieve all CPU components, optionally filtered by max price."""
+    try:
+        return agent_service.get_components_by_category("cpu", max_price=max_price)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/components/gpu")
+def get_all_gpu(max_price: Optional[float] = None):
+    """Retrieve all GPU components, optionally filtered by max price."""
+    try:
+        return agent_service.get_components_by_category("gpu", max_price=max_price)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/components/{component_category}")
+def get_all_components_by_category(component_category: str, max_price: Optional[float] = None):
+    """
+    Retrieve all components for any category (e.g., cpu, gpu, motherboard, ram, ssd, psu, case),
+    optionally filtered by max price.
+    """
+    try:
+        items = agent_service.get_components_by_category(component_category, max_price=max_price)
+        return {
+            "category": component_category,
+            "count": len(items),
+            "items": items,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

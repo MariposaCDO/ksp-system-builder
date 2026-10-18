@@ -116,3 +116,9 @@ class PcAgentService:
 
     def process_explicit(self, games: list, budget: float) -> dict:
         return self.engine.process_build_request_tiered(games=games, max_budget=budget)
+
+    def get_all_games(self) -> dict:
+        return self.engine.game_rules._catalog
+
+    def get_components_by_category(self, category: str, max_price: Optional[float] = None) -> list:
+        return self.engine.catalog.get_category(category, max_price=max_price)

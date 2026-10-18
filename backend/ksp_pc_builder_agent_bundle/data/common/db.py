@@ -79,9 +79,10 @@ class CatalogDB:
     ):
         self._parts_path = parts_db_path or Config.PARTS_DB_PATH
         self._specs_path = specs_db_path
-        self._conn: sqlite3.Connection = sqlite3.connect(":memory:")
+        self._conn: sqlite3.Connection = sqlite3.connect(":memory:", check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._bootstrap()
+
 
     # -----------------------------------------------------------------------
     # Public query API
