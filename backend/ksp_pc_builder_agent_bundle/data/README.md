@@ -20,3 +20,12 @@
 - `catalogs/games/known_games_url.json`
 
 Run pipelines from `agent/ksp-system-builder` with `backend` on `PYTHONPATH`, or invoke the script paths shown in the project README.
+
+## Runtime Mutation
+
+While pipelines handle bulk/offline ETL, `catalogs/games/game_requirements.json` can also be queried and mutated at runtime through the backend API:
+- `GET /api/v1/games` — list all recognized games
+- `POST /api/v1/games/upsert` — canonical upsert mechanism (in-memory + persists to JSON)
+- `POST /api/v1/games/add` — wrapper that fails with 409 if game already exists
+- `PUT /api/v1/games/update` — wrapper that fails with 404 if game is missing
+

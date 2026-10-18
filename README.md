@@ -1,46 +1,63 @@
 # KSP PC Builder Agent
 
-`Python 3.10+` `Ollama / Local LLM` `Deterministic Build Engine` `Live KSP Catalog`
+`Python 3.10+` `FastAPI REST API` `Ollama / Local LLM` `Deterministic Build Engine` `Live KSP Catalog`
 
-A game-aware PC builder for KSP hardware. It resolves target game requirements, queries a local KSP parts catalog, enforces physical compatibility (socket, RAM type, form factor), and returns a budgeted build recommendation.
+A game-aware PC builder for KSP hardware. It resolves target game requirements, queries an indexed local KSP parts catalog (in-memory SQLite cache), enforces physical compatibility (socket, RAM type, form factor, TDP), and returns budgeted build recommendations across multiple budget tiers (`minimal`, `best_gpu`, `best_cpu`, `budget_60`, `budget_80`, `budget_100`).
 
-Optional Ollama integration turns a natural-language prompt into games + budget, then hands off to the deterministic engine.
+Provides modular access through a **FastAPI REST API**, a **rich CLI**, and a lightweight **Web UI**. Optional Ollama integration turns natural-language prompts into games + budget constraints before handing off to the deterministic engine.
 
 > **Recommended local models:** `llama3.1:8b`, `qwen2.5-coder:7b`, or `qwen2.5-coder:14b` via [Ollama](https://ollama.com) on port `11434`.
+
+---
 
 ## Project Layout
 
 ```text
 ksp-system-builder/
 ├── frontend/
-│   └── cli/
-│       └── main.py              # CLI entrypoint (Ollama prompt or explicit flags)
+│   ├── cli/
+│   │   └── main.py              # CLI entrypoint (Ollama prompt or explicit flags)
+│   └── html/
+│       └── index.html           # Web UI interface
 ├── backend/
+│   ├── api/                     # Modular FastAPI REST API layer
+│   │   ├── main.py              # Application entrypoint & CORS middleware
+│   │   ├── schemas.py           # Pydantic request models
+│   │   ├── deps.py              # Dependency injection provider for services
+│   │   └── routes/              # Modular API endpoints
+│   │       ├── build.py         # /api/v1/build (prompt & explicit builds)
+│   │       ├── games.py         # /api/v1/games (get, add, update, upsert)
+│   │       └── components.py    # /api/v1/components (category & component queries)
+│   ├── services/
+│   │   └── agent_service.py     # Agent service bridging LLM prompt parsing & engine
+│   ├── ollama/
+│   │   └── self_healer.py       # Ollama health checks & auto-pull / model prune
 │   └── ksp_pc_builder_agent_bundle/
-│       ├── ksp_pc_builder_agent_engine.py   # Core build loop
-│       ├── ksp_pc_builder_config.py         # Paths / env overrides
-│       ├── ksp_pc_builder_preflight.py      # Catalog presence check
+│       ├── ksp_pc_builder_agent_engine.py   # Multi-tier deterministic build loop
+│       ├── ksp_pc_builder_config.py         # Paths & env overrides
+│       ├── ksp_pc_builder_preflight.py      # Catalog integrity & freshness checks
 │       ├── adapters/
-│       │   ├── parts_catalog_adapter.py     # parts catalog queries
+│       │   ├── parts_catalog_adapter.py     # Parts queries & best-GPU heuristics
 │       │   └── web_scraper_adapter.py       # KSP item URL helpers
 │       ├── domain/
-│       │   ├── game_requirements_rules.py   # Game RAM/VRAM targets
-│       │   └── pc_compatibility_rules.py    # Socket / RAM / form-factor checks
+│       │   ├── game_requirements_rules.py   # Game RAM/VRAM targets & mutation
+│       │   └── pc_compatibility_rules.py    # Socket, RAM, and form-factor checks
 │       └── data/
-│           ├── README.md                    # catalogs vs pipelines contract
-│           ├── catalogs/                    # Runtime JSON (agent loads these)
+│           ├── README.md                    # Catalog vs pipeline contract
+│           ├── catalogs/                    # Authoritative runtime JSON catalogs
 │           │   ├── parts/parts_db.json
 │           │   ├── games/game_requirements.json
 │           │   └── games/known_games_url.json
-│           ├── common/                      # Shared paths + JSON helpers
+│           ├── common/                      # In-memory SQLite DB, paths & JSON I/O
 │           └── pipelines/                   # ETL (download = replace, update = patch)
 │               ├── parts/download_parts_catalog.py
 │               ├── games/download_game_requirements.py
 │               ├── games/update_game_requirements.py
 │               └── games/update_known_games_urls.py
-├── docs/                                    # HTML architecture notes
 └── README.md
 ```
+
+---
 
 ## Quickstart & Standalone Setup
 
@@ -102,8 +119,7 @@ The backend features an integrated self-healer (`backend/ollama/self_healer.py`)
 
 ### 4. Ensure the Parts Database Exists
 
-A catalog should already live at
-`backend/ksp_pc_builder_agent_bundle/data/catalogs/parts/parts_db.json`.
+A catalog should already live at `backend/ksp_pc_builder_agent_bundle/data/catalogs/parts/parts_db.json`.
 To regenerate it (fresh prices/inventory):
 
 ```bash
@@ -118,22 +134,38 @@ python backend/ksp_pc_builder_agent_bundle/data/pipelines/parts/download_parts_c
 python backend/ksp_pc_builder_agent_bundle/data/pipelines/parts/download_parts_catalog.py --verbose
 ```
 
-**API sources:**
-- `https://ksp.co.il/m_action/api/comp/16014` — Intel system builder catalog
-- `https://ksp.co.il/m_action/api/comp/16015` — AMD system builder catalog
+---
 
-> KSP uses Cloudflare protection. The downloader uses `cloudscraper` to bypass it. On repeated 403s, wait ~30 seconds and retry.
+### 5. Running the Backend API Server
 
-Override the catalog path with `KSP_PARTS_DB_PATH` if needed.
-
-### 3. (Optional) Set Up Ollama
+Start the FastAPI application with `uvicorn`:
 
 ```bash
-ollama pull llama3.1:8b
-# or: ollama pull qwen2.5-coder:7b
+uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 4. Run the CLI
+Interactive Swagger / OpenAPI documentation is available at `http://localhost:8000/docs`.
+
+#### API Endpoints Overview
+
+| Category | Endpoint | Method | Description |
+| --- | --- | --- | --- |
+| **Build** | `/api/v1/build/prompt` | `POST` | Build PC configurations from a natural-language prompt |
+| | `/api/v1/build/explicit` | `POST` | Build PC configurations for explicit games list and budget |
+| **Games** | `/api/v1/games` | `GET` | List all supported games and their hardware requirements |
+| | `/api/v1/games/upsert` | `POST` | **Canonical upsert** mechanism: creates or updates game requirements |
+| | `/api/v1/games/add` | `POST` | Adds a new game requirement; fails with `409 Conflict` if existing |
+| | `/api/v1/games/update` | `PUT` | Updates an existing game; fails with `404 Not Found` if missing |
+| **Components** | `/api/v1/components/categories`| `GET` | List all 27 available hardware categories in the database |
+| | `/api/v1/components/cpu` | `GET` | Retrieve all CPUs (supports optional `?max_price=` filter) |
+| | `/api/v1/components/gpu` | `GET` | Retrieve all GPUs (supports optional `?max_price=` filter) |
+| | `/api/v1/components/{category}`| `GET` | Retrieve parts by category (`motherboard`, `ram`, `ssd`, `psu`, etc.) |
+
+> **Missing Game Guard:** If a build request references a game not found in the catalog, the API raises `404 Not Found` with a specific hint and JSON payload demonstrating how to add it via `/api/v1/games/upsert`.
+
+---
+
+### 6. Run the CLI Client
 
 ```bash
 # Natural-language prompt (Ollama extracts games + budget, then runs the engine)
@@ -142,23 +174,31 @@ python frontend/cli/main.py --prompt "Build me a PC for Minecraft and Roblox wit
 # Explicit games + budget (no LLM required for the build itself)
 python frontend/cli/main.py --games minecraft roblox --budget 3500
 
+# View specific tier only (e.g. minimal, best_gpu, best_cpu, budget_100)
+python frontend/cli/main.py --games minecraft roblox --budget 4500 --tier best_gpu
+
 # Default demo prompt if no flags are given
 python frontend/cli/main.py
 ```
 
-The CLI runs preflight (parts DB present and loadable), then prints a category / price / part summary table.
+---
 
 ## How It Works
 
-1. **Game requirements** — `GameRequirementsRules` looks up each game in
-   `backend/ksp_pc_builder_agent_bundle/data/catalogs/games/game_requirements.json`.
-   Unknown titles can be auto-fetched from System Requirements Lab and appended to the catalog.
-2. **Catalog selection** — `PartsCatalogAdapter` loads parts by category
-   (`cpu`, `motherboard`, `ram`, `ssd`, `psu`, `case`, `gpu`) from
-   `backend/ksp_pc_builder_agent_bundle/data/catalogs/parts/parts_db.json`.
-3. **Compatibility** — `PCCompatibilityRules` filters candidates against already-picked parts using
-   catalog tags and category metadata from `parts_db.json` (socket, RAM type, form factor, etc.).
-4. **Budget fit** — The engine picks lowest-price compatible parts within remaining budget and returns the build dict + totals.
+1. **Game Requirements Evaluation** — `GameRequirementsRules` loads hardware targets from `game_requirements.json`. If a requested title is missing during build API calls, the system immediately halts with a helpful remediation hint.
+2. **Indexed Catalog Queries** — At startup, `CatalogDB` loads `parts_db.json` into an in-memory SQLite database (`:memory:`) with indices on categories and prices for fast $O(\log N)$ filtered lookups without redundant file re-scans.
+3. **Hardware Compatibility Verification** — `PCCompatibilityRules` validates physical constraints:
+   - **Socket Matching:** CPU socket must match the motherboard socket (e.g. AM5, LGA1851, LGA1700).
+   - **RAM Standard Matching:** Motherboard RAM type (DDR4 / DDR5) must match memory sticks.
+   - **Chassis & Board Form Factors:** Motherboard form factor must be supported by the case (ATX, Micro-ATX, Mini-ITX).
+   - **Thermal TDP Matching:** Cooler rating must equal or exceed CPU base power.
+4. **Multi-Tier Budget Allocation** — `KspPcBuilderAgentEngine` computes multiple build strategies:
+   - `minimal`: Minimum cost system meeting all game RAM and VRAM requirements.
+   - `best_gpu`: Maximizes GPU spend (up to ~55% of budget) for peak graphical performance.
+   - `best_cpu`: Prioritizes single-core and compute-heavy CPU performance (~40% of budget).
+   - `budget_60`, `budget_80`, `budget_100`: Balanced allocations across tiers.
+
+---
 
 ## Supporting Data Pipelines
 
@@ -166,45 +206,24 @@ Run from `agent/ksp-system-builder` (cwd). Scripts add `backend/` to `sys.path` 
 
 | Script | Op | Output | Purpose |
 | --- | --- | --- | --- |
-| `backend/ksp_pc_builder_agent_bundle/data/pipelines/parts/download_parts_catalog.py` | download | catalogs/parts/parts_db.json | KSP prices / stock / categories |
-| `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/download_game_requirements.py` | download | catalogs/games/game_requirements.json | Rebuild game RAM/VRAM from known URLs |
-| `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_game_requirements.py` | update | patches game requirements + known URLs | Add or refresh a single game |
+| `backend/ksp_pc_builder_agent_bundle/data/pipelines/parts/download_parts_catalog.py` | download | catalogs/parts/parts_db.json | Full scrape of KSP components, prices, and stock |
+| `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/download_game_requirements.py` | download | catalogs/games/game_requirements.json | Rebuild game RAM/VRAM targets from known URLs |
+| `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_game_requirements.py` | update | patches game requirements + known URLs | Add or refresh a single game requirement offline |
 | `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_known_games_urls.py` | update | catalogs/games/known_games_url.json | Dedupe slugs and resolve SRL URLs |
 
-Output paths are under `backend/ksp_pc_builder_agent_bundle/data/catalogs/`.
-
-## Parts Database Shape
-
-`backend/ksp_pc_builder_agent_bundle/data/catalogs/parts/parts_db.json` looks like:
-
-```json
-{
-  "downloaded_at": "2026-09-22T19:01:55Z",
-  "sources": ["https://ksp.co.il/m_action/api/comp/16014", "..."],
-  "categories": {
-    "cpu": [ { "uin": "...", "name": "...", "price": 369.0, "stock": 1 } ],
-    "gpu": [],
-    "motherboard": [],
-    "ram": [],
-    "psu": [],
-    "case": [],
-    "ssd": [],
-    "hdd": [],
-    "cpu_cooler": []
-  }
-}
-```
-
-Typical item fields: uin, uinsql, name, brand, price (ILS), stock, category_slug, ksp_url, eol, tags.
+---
 
 ## Configuration
 
 | Setting | Where | Notes |
 | --- | --- | --- |
-| Parts DB path | `KSP_PARTS_DB_PATH` or `Config.PARTS_DB_PATH` | Defaults to bundle catalogs/parts/parts_db.json (see Config) |
-| Ollama model | `frontend/cli/main.py` (`MODEL`) | Default `llama3.1:8b` |
-| Ollama URL | `frontend/cli/main.py` (`OLLAMA_URL`) | Default `http://localhost:11434/api/chat` |
-| Budget / games | CLI `--budget` / `--games` or `--prompt` | No need to edit engine source |
+| Parts DB path | `KSP_PARTS_DB_PATH` or `Config.PARTS_DB_PATH` | Defaults to bundle `catalogs/parts/parts_db.json` |
+| Ollama model | `OLLAMA_MODEL` | Default `llama3.1:8b` |
+| Ollama URL | `OLLAMA_URL` / `OLLAMA_BASE_URL` | Default `http://localhost:11434` |
+| Auto heal models | `AUTO_HEAL_MODELS` | Default `true` |
+| Build Budget / Games | CLI flags `--budget`, `--games` or API request payload | No need to edit engine source |
+
+---
 
 ## Programmatic Use
 
@@ -212,12 +231,17 @@ Typical item fields: uin, uinsql, name, brand, price (ILS), stock, category_slug
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path("backend").resolve()))  # from ksp-system-builder/
+# Add backend directory to sys.path
+sys.path.insert(0, str(Path("backend").resolve()))
 
 from ksp_pc_builder_agent_bundle import KspPcBuilderAgentEngine, run_preflight_checks
 
 assert run_preflight_checks()
 engine = KspPcBuilderAgentEngine()
-result = engine.process_build_request(games=["minecraft", "roblox"], max_budget=3500.0)
-print(result["total_price"], result["build"].keys())
+
+# Generate tiered recommendations
+result = engine.process_build_request_tiered(games=["minecraft", "roblox"], max_budget=4000.0)
+
+for tier_name, tier_data in result["tiers"].items():
+    print(f"Tier [{tier_name}]: Total = {tier_data['total_price']:.2f} ILS (Within budget: {tier_data['within_budget']})")
 ```
