@@ -120,5 +120,15 @@ class PcAgentService:
     def get_all_games(self) -> dict:
         return self.engine.game_rules._catalog
 
+    def upsert_game(self, game: str, required_ram_gb: int, required_vram_gb: int, source_url: Optional[str] = None) -> dict:
+        return self.engine.game_rules.upsert_game(game, required_ram_gb, required_vram_gb, source_url)
+
+    def add_game(self, game: str, required_ram_gb: int, required_vram_gb: int, source_url: Optional[str] = None) -> dict:
+        return self.engine.game_rules.add_game(game, required_ram_gb, required_vram_gb, source_url)
+
+    def update_game(self, game: str, required_ram_gb: int, required_vram_gb: int, source_url: Optional[str] = None) -> dict:
+        return self.engine.game_rules.update_game(game, required_ram_gb, required_vram_gb, source_url)
+
     def get_components_by_category(self, category: str, max_price: Optional[float] = None) -> list:
-        return self.engine.catalog.get_category(category, max_price=max_price)
+        return self.engine.catalog.get_category(category, max_price=max_price)
+

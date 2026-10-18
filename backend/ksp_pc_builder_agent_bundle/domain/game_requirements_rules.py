@@ -79,6 +79,59 @@ class GameRequirementsRules:
 
         return aggregated
 
+    def reload(self) -> None:
+        """Reload the catalog from disk."""
+        self._catalog = self._load_catalog()
+
+    def upsert_game(self, game_name: str, required_ram_gb: int, required_vram_gb: int, source_url: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Canonical upsert mechanism: creates or updates game requirements in memory and persists to disk.
+        """
+        from datetime import datetime, timezone
+        from ksp_pc_builder_agent_bundle.data.common.io import load_json, save_json
+
+        clean_key = game_name.strip().lower()
+        now_str = datetime.now(timezone.utc).isoformat()
+        
+        entry = {
+            "game": clean_key,
+            "required_ram_gb": int(required_ram_gb),
+            "required_vram_gb": int(required_vram_gb),
+            "source_url": source_url or "",
+            "last_updated": now_str,
+        }
+
+        # Update in-memory
+        self._catalog[clean_key] = entry
+
+        # Persist to JSON
+        raw_db = load_json(self.db_path, {"last_updated": "", "games": {}})
+        if "games" not in raw_db:
+            raw_db["games"] = {}
+        raw_db["games"][clean_key] = entry
+        raw_db["last_updated"] = now_str
+        save_json(self.db_path, raw_db)
+
+        return entry
+
+    def add_game(self, game_name: str, required_ram_gb: int, required_vram_gb: int, source_url: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Wrapper that fails if the game is already in the database.
+        """
+        clean_key = game_name.strip().lower()
+        if self._find_in_catalog(clean_key) is not None:
+            raise ValueError(f"Game '{clean_key}' already exists in catalog. Use update or upsert.")
+        return self.upsert_game(clean_key, required_ram_gb, required_vram_gb, source_url)
+
+    def update_game(self, game_name: str, required_ram_gb: int, required_vram_gb: int, source_url: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Wrapper that fails if the game is missing from the database.
+        """
+        clean_key = game_name.strip().lower()
+        if self._find_in_catalog(clean_key) is None:
+            raise KeyError(f"Game '{clean_key}' not found in catalog. Use add or upsert.")
+        return self.upsert_game(clean_key, required_ram_gb, required_vram_gb, source_url)
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

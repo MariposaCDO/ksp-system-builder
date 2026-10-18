@@ -1,8 +1,7 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from typing import List, Optional
 import sys
 from pathlib import Path
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # Path bootstrap
 API_DIR = Path(__file__).resolve().parent
@@ -10,85 +9,36 @@ BACKEND_DIR = API_DIR.parents[0]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from services.agent_service import PcAgentService
 from ksp_pc_builder_agent_bundle import run_preflight_checks
+from api.routes import build_router, games_router, components_router
 
-app = FastAPI(title="KSP System Builder API", version="1.0.0")
-agent_service = PcAgentService()
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="KSP System Builder API",
+        version="1.1.0",
+        description="REST API for PC System Builder recommendations, game requirements, and component queries.",
+    )
 
-class PromptRequest(BaseModel):
-    prompt: str = Field(..., example="Build me a PC for Cyberpunk 2077 with 6000 ILS")
+    # Enable CORS for browser / web UI clients
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-class ExplicitBuildRequest(BaseModel):
-    games: List[str] = Field(..., example=["cyberpunk-2077"])
-    budget: float = Field(..., example=6000.0)
+    # Include modular routers
+    app.include_router(build_router)
+    app.include_router(games_router)
+    app.include_router(components_router)
 
-@app.on_event("startup")
-def startup_event():
-    ok, stale_files = run_preflight_checks(stale_mode="ignore")
-    if not ok:
-        print("[WARNING] Preflight checks encountered errors during startup.")
+    @app.on_event("startup")
+    def startup_event():
+        ok, stale_files = run_preflight_checks(stale_mode="ignore")
+        if not ok:
+            print("[WARNING] Preflight checks encountered errors during startup.")
 
-@app.post("/api/v1/build/prompt")
-def build_from_prompt(req: PromptRequest):
-    try:
-        result = agent_service.process_prompt(req.prompt)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return app
 
-@app.post("/api/v1/build/explicit")
-def build_explicit(req: ExplicitBuildRequest):
-    try:
-        result = agent_service.process_explicit(req.games, req.budget)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/v1/games")
-def get_all_games():
-    """Retrieve all games currently available in the requirements catalog."""
-    try:
-        return agent_service.get_all_games()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/v1/components/categories")
-def get_component_categories():
-    """Retrieve all available component categories in the parts database."""
-    try:
-        return agent_service.engine.catalog._db.get_categories()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/v1/components/cpu")
-def get_all_cpu(max_price: Optional[float] = None):
-    """Retrieve all CPU components, optionally filtered by max price."""
-    try:
-        return agent_service.get_components_by_category("cpu", max_price=max_price)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/v1/components/gpu")
-def get_all_gpu(max_price: Optional[float] = None):
-    """Retrieve all GPU components, optionally filtered by max price."""
-    try:
-        return agent_service.get_components_by_category("gpu", max_price=max_price)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/v1/components/{component_category}")
-def get_all_components_by_category(component_category: str, max_price: Optional[float] = None):
-    """
-    Retrieve all components for any category (e.g., cpu, gpu, motherboard, ram, ssd, psu, case),
-    optionally filtered by max price.
-    """
-    try:
-        items = agent_service.get_components_by_category(component_category, max_price=max_price)
-        return {
-            "category": component_category,
-            "count": len(items),
-            "items": items,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+app = create_app()
