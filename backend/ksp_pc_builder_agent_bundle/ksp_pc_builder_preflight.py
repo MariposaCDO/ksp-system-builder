@@ -43,7 +43,6 @@ STALE_THRESHOLD_DAYS = 30
 ALL_DB_FILES: dict[str, Path] = {
     "parts_db":          Config.PARTS_DB_PATH,
     "game_requirements": Config.GAME_REQUIREMENTS_PATH,
-    "known_games_urls":  Config.KNOWN_GAMES_URLS_PATH,
 }
 
 # Maps each DB name to the module path of its update pipeline.
@@ -53,8 +52,6 @@ UPDATE_PIPELINES: dict[str, str] = {
         "ksp_pc_builder_agent_bundle.data.pipelines.parts.download_parts_catalog",
     "game_requirements":
         "ksp_pc_builder_agent_bundle.data.pipelines.games.download_game_requirements",
-    "known_games_urls":
-        "ksp_pc_builder_agent_bundle.data.pipelines.games.update_known_games_urls",
 }
 
 

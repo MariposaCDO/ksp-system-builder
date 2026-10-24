@@ -9,4 +9,3 @@ CATALOGS_DIR = DATA_DIR / "catalogs"
 class CatalogPaths:
     PARTS_DB = CATALOGS_DIR / "parts" / "parts_db.json"
     GAME_REQUIREMENTS = CATALOGS_DIR / "games" / "game_requirements.json"
-    KNOWN_GAMES_URLS = CATALOGS_DIR / "games" / "known_games_url.json"

@@ -69,10 +69,15 @@ class GameRequirementsRules:
         Look up each game in the local catalog and aggregate minimum hardware
         requirements.  Unknown games are listed in ``unrecognized_games`` with their
         normalized search representation; no automatic remote fetching is performed.
+
+        Schema v2 note: ``required_ram_gb`` / ``required_vram_gb`` on each catalog
+        entry represent the **minimum** specs needed to run the game.  The richer
+        ``tiers`` dict (minimum / recommended / high) is available for display or
+        future engine targeting but is not consumed here.
         """
         aggregated: Dict[str, Any] = {
-            "required_ram_gb":    8,
-            "required_vram_gb":   2,
+            "required_ram_gb":    4,   # fallback minimum when no game is recognized
+            "required_vram_gb":   1,   # fallback minimum when no game is recognized
             "detected_games":     [],
             "unrecognized_games": [],
         }
@@ -108,54 +113,125 @@ class GameRequirementsRules:
         """Reload the catalog from disk."""
         self._catalog = self._load_catalog()
 
-    def upsert_game(self, game_name: str, required_ram_gb: int, required_vram_gb: int, source_url: Optional[str] = None) -> Dict[str, Any]:
+    def upsert_game(
+        self,
+        game_name: str,
+        required_ram_gb: int,
+        required_vram_gb: int,
+        source_url: Optional[str] = None,
+        display_name: Optional[str] = None,
+        tiers: Optional[Dict[str, Any]] = None,
+        notes: Optional[str] = None,
+        official_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
-        Canonical upsert mechanism: creates or updates game requirements in memory and persists to disk.
+        Canonical upsert mechanism: creates or updates game requirements in memory
+        and persists to disk using the v2 schema.
+
+        Parameters
+        ----------
+        game_name       : Canonical game key (will be lowercased and stripped).
+        required_ram_gb : **Minimum** RAM required to run the game (GB).
+        required_vram_gb: **Minimum** VRAM required to run the game (GB).
+        source_url      : SRL or equivalent requirements page URL.
+        display_name    : Human-readable game title (e.g. "Minecraft: Java Edition").
+        tiers           : Optional dict with keys ``minimum``, ``recommended``, ``high``.
+                          Each tier may contain: ram_gb, vram_gb, cpu_hint, gpu_hint,
+                          api_level, storage_gb, os, target.
+        notes           : Free-text caveats (e.g. storage scaling, modpack behaviour).
+        official_url    : Publisher's official requirements page URL.
         """
         from datetime import datetime, timezone
         from ksp_pc_builder_agent_bundle.data.common.io import load_json, save_json
 
         clean_key = game_name.strip().lower()
         now_str = datetime.now(timezone.utc).isoformat()
-        
-        entry = {
-            "game": clean_key,
-            "required_ram_gb": int(required_ram_gb),
+
+        entry: Dict[str, Any] = {
+            "game":             clean_key,
+            "display_name":     display_name or clean_key.title(),
+            "required_ram_gb":  int(required_ram_gb),
             "required_vram_gb": int(required_vram_gb),
-            "source_url": source_url or "",
-            "last_updated": now_str,
         }
 
-        # Update in-memory
+        if tiers:
+            entry["tiers"] = tiers
+        else:
+            # Build a minimal tiers block from the provided values so the entry
+            # is always schema-v2 compliant even when called by legacy pipelines.
+            entry["tiers"] = {
+                "minimum": {
+                    "ram_gb":  int(required_ram_gb),
+                    "vram_gb": int(required_vram_gb),
+                }
+            }
+
+        if notes:
+            entry["notes"] = notes
+        entry["source_url"]   = source_url or ""
+        if official_url:
+            entry["official_url"] = official_url
+        entry["last_updated"] = now_str
+
+        # Update in-memory catalog
         self._catalog[clean_key] = entry
 
         # Persist to JSON
-        raw_db = load_json(self.db_path, {"last_updated": "", "games": {}})
+        raw_db = load_json(self.db_path, {"last_updated": "", "schema_version": "2.0", "games": {}})
         if "games" not in raw_db:
             raw_db["games"] = {}
         raw_db["games"][clean_key] = entry
-        raw_db["last_updated"] = now_str
+        raw_db["last_updated"]   = now_str
+        raw_db["schema_version"] = "2.0"
         save_json(self.db_path, raw_db)
 
         return entry
 
-    def add_game(self, game_name: str, required_ram_gb: int, required_vram_gb: int, source_url: Optional[str] = None) -> Dict[str, Any]:
+    def add_game(
+        self,
+        game_name: str,
+        required_ram_gb: int,
+        required_vram_gb: int,
+        source_url: Optional[str] = None,
+        display_name: Optional[str] = None,
+        tiers: Optional[Dict[str, Any]] = None,
+        notes: Optional[str] = None,
+        official_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Wrapper that fails if the game is already in the database.
         """
         clean_key = game_name.strip().lower()
         if self._find_in_catalog(clean_key) is not None:
             raise ValueError(f"Game '{clean_key}' already exists in catalog. Use update or upsert.")
-        return self.upsert_game(clean_key, required_ram_gb, required_vram_gb, source_url)
+        return self.upsert_game(
+            clean_key, required_ram_gb, required_vram_gb,
+            source_url=source_url, display_name=display_name,
+            tiers=tiers, notes=notes, official_url=official_url,
+        )
 
-    def update_game(self, game_name: str, required_ram_gb: int, required_vram_gb: int, source_url: Optional[str] = None) -> Dict[str, Any]:
+    def update_game(
+        self,
+        game_name: str,
+        required_ram_gb: int,
+        required_vram_gb: int,
+        source_url: Optional[str] = None,
+        display_name: Optional[str] = None,
+        tiers: Optional[Dict[str, Any]] = None,
+        notes: Optional[str] = None,
+        official_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Wrapper that fails if the game is missing from the database.
         """
         clean_key = game_name.strip().lower()
         if self._find_in_catalog(clean_key) is None:
             raise KeyError(f"Game '{clean_key}' not found in catalog. Use add or upsert.")
-        return self.upsert_game(clean_key, required_ram_gb, required_vram_gb, source_url)
+        return self.upsert_game(
+            clean_key, required_ram_gb, required_vram_gb,
+            source_url=source_url, display_name=display_name,
+            tiers=tiers, notes=notes, official_url=official_url,
+        )
 
     # ------------------------------------------------------------------
     # Internal

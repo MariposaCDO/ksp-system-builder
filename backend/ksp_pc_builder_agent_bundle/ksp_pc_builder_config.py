@@ -16,7 +16,6 @@ class Config:
         os.getenv("KSP_PARTS_DB_PATH", CatalogPaths.PARTS_DB)
     )
     GAME_REQUIREMENTS_PATH = CatalogPaths.GAME_REQUIREMENTS
-    KNOWN_GAMES_URLS_PATH = CatalogPaths.KNOWN_GAMES_URLS
 
     DEFAULT_CURRENCY = "ILS"
     MAX_RECOMMENDATIONS = 5
