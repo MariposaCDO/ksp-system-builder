@@ -29,7 +29,7 @@ import json
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 from .ksp_pc_builder_config import Config
 
@@ -211,6 +211,49 @@ def run_preflight_checks(stale_mode: str = "ask", check_ollama: bool = False) ->
 
     return all_ok, stale_files
 
+
+# ---------------------------------------------------------------------------
+# Game catalog membership check
+# ---------------------------------------------------------------------------
+
+def check_games_in_catalog(game_inputs: List[str]) -> List[str]:
+    """Check whether requested games exist in the local game_requirements catalog.
+
+    Parameters
+    ----------
+    game_inputs : list of raw game name strings (as typed by the user)
+
+    Returns
+    -------
+    list of normalized game slugs NOT found in the local catalog.
+    An empty list means all games are present.
+    """
+    def _normalize(title: str) -> str:
+        import re
+        cleaned = title.strip().lower()
+        cleaned = re.sub(r'[\-_:\.]+', ' ', cleaned)
+        cleaned = re.sub(r'([a-zA-Z]+)(\d+)', r'\1 \2', cleaned)
+        cleaned = re.sub(r'(\d+)([a-zA-Z]+)', r'\1 \2', cleaned)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return cleaned
+
+    games_path = Config.GAME_REQUIREMENTS_PATH
+    if not games_path.exists():
+        return [_normalize(g) for g in game_inputs if g.strip()]
+
+    with open(games_path, 'r', encoding='utf-8') as f:
+        catalog = json.load(f).get('games', {})
+
+    missing: List[str] = []
+    for entry in game_inputs:
+        slug = _normalize(entry)
+        if not slug:
+            continue
+        found = any(_normalize(k) == slug for k in catalog.keys())
+        if not found:
+            missing.append(slug)
+
+    return missing
 
 # ---------------------------------------------------------------------------
 # Standalone runner (python -m ksp_pc_builder_agent_bundle.ksp_pc_builder_preflight)

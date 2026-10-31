@@ -78,9 +78,54 @@ def search_srl_games(game_name: str, timeout: int = 10) -> List[Dict[str, Any]]:
 def resolve_best_srl_game(game_name: str, timeout: int = 10) -> Optional[Dict[str, Any]]:
     """
     Search SRL for game_name and find the best match using title similarity.
-    Fallback to word variations (e.g. without trailing numbers or common tokens) if no direct match.
+
+    Handles:
+    - Abbreviations vs full names (e.g. 'civ 4' -> 'Civilization IV')
+    - Roman numerals (already canonicalized: iv->4, v->5 etc.)
+    - Fallback to word variations if no direct match is found.
+
+    Strategy:
+    1. Search with original name; score all candidates.
+    2. If best score is weak (< 2.0), retry with numeric-only suffix
+       (strips abbreviation prefix, keeps the edition number) so the SRL
+       search engine can find the full franchise title.
+    3. Number-match bonus: if query and title share the same edition number,
+       apply a strong bonus to prefer the edition-correct result.
     """
+    def _score_candidates(candidates, target_tokens, target_str):
+        def match_score(item: Dict[str, Any]) -> float:
+            title_tokens = canonicalize_tokens(item["title"])
+            title_str = " ".join(title_tokens)
+
+            # Exact canonical token match
+            if target_tokens == title_tokens or target_str == title_str:
+                return 20.0
+
+            score = SequenceMatcher(None, target_str, title_str).ratio() * 5.0
+            target_set = set(target_tokens)
+            title_set = set(title_tokens)
+
+            # Subset match (all query tokens appear in title)
+            if target_set and target_set.issubset(title_set):
+                score += 10.0
+
+            # Edition number match bonus — same digit edition = strong signal
+            target_nums = set(re.findall(r"\b\d+\b", target_str))
+            title_nums = set(re.findall(r"\b\d+\b", title_str))
+            if target_nums and title_nums:
+                if target_nums == title_nums:
+                    score += 8.0  # same edition, boost
+                elif not target_nums.isdisjoint(title_nums):
+                    score += 3.0  # partial overlap
+                else:
+                    score -= 15.0  # edition mismatch, penalize
+
+            return score
+        return max(candidates, key=match_score), match_score(max(candidates, key=match_score))
+
     candidates = search_srl_games(game_name, timeout=timeout)
+
+    # Fallback 1: try truncated name (first 3 words)
     if not candidates:
         clean_target = re.sub(r'[^a-zA-Z0-9\s]', ' ', game_name).strip()
         words = clean_target.split()
@@ -88,36 +133,34 @@ def resolve_best_srl_game(game_name: str, timeout: int = 10) -> Optional[Dict[st
             shortened = " ".join(words[:3])
             candidates = search_srl_games(shortened, timeout=timeout)
 
+    # Fallback 2: try searching only the numeric part (edition number) if present
+    # e.g. "civ 4" -> "4" won't help, but "civilization 4" prefix removal won't either.
+    # Instead try just the non-numeric part as a broader search term.
+    if not candidates:
+        # Extract only the alphabetic portion (e.g. "civ" from "civ 4")
+        alpha_part = re.sub(r'\d+', '', game_name).strip()
+        if alpha_part and alpha_part != game_name.strip():
+            candidates = search_srl_games(alpha_part, timeout=timeout)
+
     if not candidates:
         return None
 
     target_tokens = canonicalize_tokens(game_name)
     target_str = " ".join(target_tokens)
 
-    def match_score(item: Dict[str, Any]) -> float:
-        title_tokens = canonicalize_tokens(item["title"])
-        title_str = " ".join(title_tokens)
+    best = max(candidates, key=lambda item: _score_candidates([item], target_tokens, target_str)[1])
 
-        # Exact canonical token match
-        if target_tokens == title_tokens or target_str == title_str:
-            return 20.0
+    # If the best match has a weak score, try a broader search with alphabetic prefix only
+    # to catch cases like "civ 4" not matching "Civilization IV" well enough.
+    best_score = _score_candidates([best], target_tokens, target_str)[1]
+    if best_score < 3.0:
+        alpha_part = re.sub(r'\d+', '', game_name).strip()
+        if alpha_part and alpha_part != game_name.strip():
+            broader_candidates = search_srl_games(alpha_part, timeout=timeout)
+            if broader_candidates:
+                all_candidates = candidates + [c for c in broader_candidates if c not in candidates]
+                best = max(all_candidates, key=lambda item: _score_candidates([item], target_tokens, target_str)[1])
 
-        # Exact substring or subset
-        score = SequenceMatcher(None, target_str, title_str).ratio() * 5.0
-        target_set = set(target_tokens)
-        title_set = set(title_tokens)
-        if target_set and target_set.issubset(title_set):
-            score += 10.0
-
-        # Penalize edition mismatch if numbers differ (e.g. 3 vs 5)
-        target_nums = set(re.findall(r"\b\d+\b", target_str))
-        title_nums = set(re.findall(r"\b\d+\b", title_str))
-        if target_nums and title_nums and target_nums != title_nums:
-            score -= 15.0
-
-        return score
-
-    best = max(candidates, key=match_score)
     return best
 
 

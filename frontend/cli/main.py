@@ -22,7 +22,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from services.agent_service import PcAgentService
-from ksp_pc_builder_agent_bundle import run_preflight_checks
+from ksp_pc_builder_agent_bundle import run_preflight_checks, check_games_in_catalog
 from ksp_pc_builder_agent_bundle.ksp_pc_builder_agent_engine import TIER_LABELS
 
 VALID_TIERS = {"minimal", "best_gpu", "best_cpu", "budget_60", "budget_80", "budget_100"}
@@ -90,6 +90,85 @@ def _display_stale_warning(stale_files: list) -> None:
         print(f"  * {f}")
     print("=" * 80)
 
+
+def _handle_missing_games(missing_games: list) -> bool:
+    """
+    Interactively prompt the user to fetch missing games from SRL or quit.
+
+    Tries to resolve the best SRL URL for each missing game using the existing
+    srl_client (which canonicalizes Roman numerals, e.g. 'iv' -> '4' and vice-versa).
+
+    Returns True if all games were successfully fetched and the build should continue,
+    or False if the user chose to quit.
+    """
+    from ksp_pc_builder_agent_bundle.data.pipelines.games.srl_client import resolve_best_srl_game
+    from ksp_pc_builder_agent_bundle.data.pipelines.games.update_game_requirements import update_single_game
+
+    print("\n" + "=" * 80)
+    print(f"[PREFLIGHT] Game(s) not found in local catalog: {', '.join(missing_games)}")
+    print("=" * 80)
+
+    all_fetched = True
+
+    for game_slug in missing_games:
+        print(f"\n[PREFLIGHT] Resolving '{game_slug}' against SystemRequirementsLab...")
+
+        # Try to resolve the SRL match to show the user what we found
+        srl_match = None
+        resolved_url = None
+        try:
+            srl_match = resolve_best_srl_game(game_slug)
+            if srl_match and srl_match.get("url"):
+                resolved_url = srl_match["url"]
+                resolved_title = srl_match.get("title", game_slug)
+                print(f"  -> Found on SRL: '{resolved_title}'")
+                print(f"     URL: {resolved_url}")
+            else:
+                print(f"  -> Could not auto-resolve '{game_slug}' on SRL.")
+        except Exception as e:
+            print(f"  -> SRL lookup error: {e}")
+
+        print()
+        print(f"  Options for '{game_slug}':")
+        if resolved_url:
+            print(f"  [F] Fetch requirements from SRL now  ({resolved_url})")
+        else:
+            print(f"  [F] Fetch requirements from SRL now  (will attempt search: '{game_slug}')")
+        print(f"  [Q] Quit — stop the build")
+        print()
+
+        while True:
+            try:
+                choice = input("  Your choice [F/Q]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                choice = "q"
+
+            if choice in ("f", "fetch"):
+                print(f"\n[PREFLIGHT] Fetching game requirements for '{game_slug}'...")
+                try:
+                    success = update_single_game(game_slug, url=resolved_url)
+                    if success:
+                        print(f"[PREFLIGHT] '{game_slug}' successfully added to catalog. Continuing build.\n")
+                    else:
+                        print(f"[PREFLIGHT ERROR] Could not fetch requirements for '{game_slug}'.")
+                        print(f"  You can add it manually via:")
+                        print(f'  python backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_game_requirements.py --game "{game_slug}" --url <SRL_URL>')
+                        all_fetched = False
+                except Exception as e:
+                    print(f"[PREFLIGHT ERROR] Fetch failed: {e}")
+                    all_fetched = False
+                break
+
+            elif choice in ("q", "quit"):
+                print(f"\n[PREFLIGHT] Build cancelled by user.")
+                return False
+
+            else:
+                print("  Please enter F to fetch or Q to quit.")
+
+    return all_fetched
+
+
 def main():
     parser = argparse.ArgumentParser(description="KSP Game-Aware System Builder CLI")
     parser.add_argument("--prompt", "-p", type=str, help="Natural language request")
@@ -115,6 +194,38 @@ def main():
     if not ok:
         sys.exit(1)
 
+    # ── Determine games early (needed for preflight game check) ──────────────
+    # We do a lightweight parse here to extract the game list before running
+    # the full agent service — this lets preflight block before any heavy work.
+    games_for_preflight: list = []
+    if args.games:
+        games_for_preflight = args.games
+    elif args.prompt:
+        # Quick deterministic extraction — same regex as agent_service fallback
+        text = args.prompt.strip()
+        text = re.sub(r"\b(?:with\s+a\s+budget\s+of|with\s+budget\s+of|budget\s+of|with\s+a\s+budget|budget)\s*(?:of\s*)?\d+(?:\.\d+)?\s*(?:ils|nis|₪)?\b", "", text, flags=re.I)
+        text = re.sub(r"\bwith\s+\d+(?:\.\d+)?\s*(?:ils|nis|₪)\b", "", text, flags=re.I)
+        text = re.sub(r"\bunder\s+\d+(?:\.\d+)?\s*(?:ils|nis|₪)?\b", "", text, flags=re.I)
+        text = re.sub(r"\b\d+(?:\.\d+)?\s*(?:ils|nis|₪)\b", "", text, flags=re.I)
+        text = re.sub(r"^(?:please\s+)?(?:build|make|give|recommend)\s+(?:me\s+)?(?:a\s+)?(?:pc|computer|system|rig)\s+(?:for|to\s+play)\s+", "", text, flags=re.I)
+        text = re.sub(r"^(?:i\s+want\s+to\s+play|i\s+need\s+a\s+pc\s+for)\s+", "", text, flags=re.I)
+        text = re.sub(r"\bwith\s+a\s*$", "", text, flags=re.I).strip()
+        parts = re.split(r"\s+(?:and|&|\+)\s+|,", text, flags=re.I)
+        stop_words = {"i want", "pc", "a", "for", "with", "the", "play", "to", "under", "budget", "of"}
+        for p in parts:
+            g_str = p.strip()
+            if g_str and g_str.lower() not in stop_words:
+                games_for_preflight.append(g_str)
+
+    # ── Preflight: check if all requested games are in the catalog ────────────
+    if games_for_preflight:
+        missing_games = check_games_in_catalog(games_for_preflight)
+        if missing_games:
+            should_continue = _handle_missing_games(missing_games)
+            if not should_continue:
+                sys.exit(1)
+
+    # ── Run the build ─────────────────────────────────────────────────────────
     agent_service = PcAgentService()
 
     if args.prompt:
@@ -128,7 +239,7 @@ def main():
     else:
         result = agent_service.process_prompt("Build me a PC for Minecraft and Roblox with a budget of 3500 ILS")
 
-    # Guard: Fail if any requested game is unrecognized/missing from catalog
+    # Guard: Fail if any requested game is still unrecognized after preflight
     unrecognized = result.get("requirements", {}).get("unrecognized_games", [])
     if unrecognized:
         missing_str = ", ".join(unrecognized)
@@ -137,7 +248,7 @@ def main():
         print(f"[HINT] Game '{unrecognized[0]}' was not found in the requirements catalog.")
         print(f"       You can add it via the API by posting to /api/v1/games/upsert or /api/v1/games/add:")
         print(f'       {{"game": "{unrecognized[0]}", "required_ram_gb": 16, "required_vram_gb": 6}}')
-        print(f"       Or update offline: python backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_game_requirements.py --game \"{unrecognized[0]}\" --url <SRL_URL>")
+        print(f'       Or update offline: python backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_game_requirements.py --game "{unrecognized[0]}" --url <SRL_URL>')
         print("=" * 80)
         sys.exit(1)
 
