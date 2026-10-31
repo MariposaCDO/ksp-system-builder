@@ -177,9 +177,37 @@ python frontend/cli/main.py --games minecraft roblox --budget 3500
 # View specific tier only (e.g. minimal, best_gpu, best_cpu, budget_100)
 python frontend/cli/main.py --games minecraft roblox --budget 4500 --tier best_gpu
 
+# Preflight diagnostics with Ollama health verification
+python frontend/cli/main.py --prompt "Build PC for Civ 4 with 3500 ILS" --check-ollama
+
+# Handle stale catalogs (auto-update or ignore without interactive prompt)
+python frontend/cli/main.py --games cyberpunk-2077 --budget 5000 --update-stale
+python frontend/cli/main.py --games cyberpunk-2077 --budget 5000 --ignore-stale
+
+# Prune unused Ollama models to free disk/VRAM
+python frontend/cli/main.py --prune-models
+
 # Default demo prompt if no flags are given
 python frontend/cli/main.py
 ```
+
+#### Interactive Missing Game Resolution
+
+When a requested game is not in the local catalog (e.g., `civ4`), the CLI immediately halts at **preflight** before performing hardware calculations and prompts the user interactively:
+
+```text
+[PREFLIGHT] Game(s) not found in local catalog: civ 4
+[PREFLIGHT] Resolving 'civ 4' against SystemRequirementsLab...
+  -> Found on SRL: 'Civilization IV'
+     URL: https://www.systemrequirementslab.com/cyri/requirements/civilization-iv/10367
+
+  Options for 'civ 4':
+  [F] Fetch requirements from SRL now (https://www.systemrequirementslab.com/cyri/requirements/civilization-iv/10367)
+  [Q] Quit — stop the build
+
+  Your choice [F/Q]:
+```
+Choosing `[F]` fetches specs and updates `game_requirements.json` on the fly, immediately proceeding with the build.
 
 ---
 
@@ -206,7 +234,7 @@ Run from `agent/ksp-system-builder` (cwd). Scripts add `backend/` to `sys.path` 
 
 | Script | Op | Output | Purpose |
 | --- | --- | --- | --- |
-| `backend/ksp_pc_builder_agent_bundle/data/pipelines/parts/download_parts_catalog.py` | download | catalogs/parts/parts_db.json | Full scrape of KSP components, prices, and stock |
+| `backend/ksp_pc_builder_agent_bundle/data/pipelines/parts/download_parts_catalog.py` | download | catalogs/parts/parts_db.json | Complete catalog download & overwrite (cleans out any stale parts) |
 | `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/download_game_requirements.py` | download | catalogs/games/game_requirements.json | Rebuild game RAM/VRAM targets from known URLs |
 | `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_game_requirements.py` | update | patches game requirements + known URLs | Add or refresh a single game requirement offline |
 | `backend/ksp_pc_builder_agent_bundle/data/pipelines/games/update_known_games_urls.py` | update | catalogs/games/known_games_url.json | Dedupe slugs and resolve SRL URLs |
@@ -234,9 +262,17 @@ from pathlib import Path
 # Add backend directory to sys.path
 sys.path.insert(0, str(Path("backend").resolve()))
 
-from ksp_pc_builder_agent_bundle import KspPcBuilderAgentEngine, run_preflight_checks
+from ksp_pc_builder_agent_bundle import KspPcBuilderAgentEngine, run_preflight_checks, check_games_in_catalog
 
-assert run_preflight_checks()
+# Preflight checks: returns (ok: bool, stale_files: list[str])
+ok, stale_files = run_preflight_checks()
+assert ok, "Catalog validation failed"
+
+# Check whether requested games are present in catalog before engine runs
+missing = check_games_in_catalog(["minecraft", "roblox"])
+if missing:
+    print(f"Warning: Missing games {missing}")
+
 engine = KspPcBuilderAgentEngine()
 
 # Generate tiered recommendations

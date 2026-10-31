@@ -14,7 +14,7 @@ Usage (from agent/ksp-system-builder):
   python .../download_parts_catalog.py --comp-ids 16014 16015 --verbose
 
 Output:
-  catalogs/parts/parts_db.json (default) — merged catalog keyed by KSP category name.
+  catalogs/parts/parts_db.json (default) — completely fresh catalog keyed by KSP category name (overwrites existing file).
 """
 
 import argparse
@@ -274,7 +274,7 @@ def download_catalog(
             print(f"  [FAIL] comp/{comp_id}: no data returned")
         raw_catalogs.append(parsed)
 
-    print("\n[*] Merging and de-duplicating...")
+    print("\n[*] Combining live downloaded endpoints and de-duplicating (complete catalog replacement)...\n[NOTICE] Existing catalog will be completely overwritten with live data (no stale entries retained).")
     merged = merge_catalogs(raw_catalogs)
 
     db = {
