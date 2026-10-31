@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-10-24T09:40:03.326812+00:00",
+  "last_updated": "2026-10-31T08:29:40.348039+00:00",
   "schema_version": "2.0",
   "games": {
     "roblox": {
@@ -184,6 +184,34 @@
       },
       "source_url": "https://www.systemrequirementslab.com/cyri/requirements/heroes-of-might-and-magic-iii-hd-edition/12443",
       "last_updated": "2026-10-24T09:39:48.967004+00:00"
+    },
+    "civ 4": {
+      "game": "civ 4",
+      "display_name": "Civ 4",
+      "required_ram_gb": 1,
+      "required_vram_gb": 1,
+      "tiers": {
+        "minimum": {
+          "ram_gb": 1,
+          "vram_gb": 1,
+          "cpu_hint": "Pentium 4 or Athlon XP",
+          "gpu_hint": "64 MB 3D Video Card with Hardware Transform & Lighting (NVIDIA GeForce2+ / ATI Radeon 7500+)",
+          "storage_gb": "1.7 GB",
+          "os": "Windows 2000/XP",
+          "target": "1080p / 30 FPS"
+        },
+        "recommended": {
+          "ram_gb": 1,
+          "vram_gb": 1,
+          "cpu_hint": "Pentium 4 or Athlon XP",
+          "gpu_hint": "128 MB Video Card w/ DirectX 8 support with pixel & vertex shaders (NVIDIA GeForce 5600+ / ATI Radeon 9600+)",
+          "storage_gb": "1.7 GB",
+          "os": "Windows 2000/XP",
+          "target": "1080p / 60 FPS"
+        }
+      },
+      "source_url": "https://www.systemrequirementslab.com/cyri/requirements/civilization-iv/10367",
+      "last_updated": "2026-10-31T08:29:40.348039+00:00"
     }
   }
 }
